@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+httpx
+pydantic
+python-dotenv
+langchain==0.3.25
+langchain-groq==0.3.2
+langchain-core==0.3.59
