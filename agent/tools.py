@@ -63,8 +63,10 @@ def search_pois(
     category: Optional[str] = None,
 ) -> str:
     """Search for points of interest (POIs) near a lat/lon coordinate.
-    Supported categories: gym, pharmacy, grocery, coffee, fast_food.
-    Supported brands: Target, Walmart.
+    Supported categories: gym, pharmacy, grocery, coffee, fast_food, restaurant,
+    bar, hotel, gas_station, clothing, bank, parking, hospital, school, supermarket.
+    Brand: pass any real brand name (e.g. Starbucks, McDonald's, CVS, Whole Foods,
+    Trader Joe's, Costco, Nike, Apple, Subway, Dunkin, Home Depot, Best Buy, Walgreens).
     Provide either brand OR category, not both.
     Returns a sorted list of nearby POIs with name, distance, and type.
     Never guess or hallucinate POI data — only use what this tool returns."""
@@ -90,8 +92,10 @@ def search_pois(
         ]
         # Append raw JSON block so main.py can extract structured POI data for the map
         import json
-        raw_block = f"\n\n__POI_DATA_JSON__:{json.dumps(pois[:50])}"
-        return f"Found {len(pois)} POI(s):\n" + "\n".join(lines) + raw_block
+        map_pois = [{"name": p["name"], "lat": p["lat"], "lon": p["lon"],
+                     "distance_m": p["distance_m"], "type": p["type"]} for p in pois[:15]]
+        raw_block = f"\n\n__POI_DATA_JSON__:{json.dumps(map_pois)}"
+        return f"Found {len(pois)} POI(s):\n" + "\n".join(lines[:20]) + raw_block
     except httpx.TimeoutException:
         return "POI search unavailable, please try again."
     except Exception as e:

@@ -13,15 +13,24 @@ logger = logging.getLogger(__name__)
 OVERPASS_FALLBACK_URL = "https://overpass.kumi.systems/api/interpreter"
 
 CATEGORY_TAGS = {
-    "gym":       'amenity"="fitness_centre',
-    "pharmacy":  'amenity"="pharmacy',
-    "grocery":   'shop"="supermarket',
-    "coffee":    'amenity"="cafe',
-    "fast_food": 'amenity"="fast_food',
+    "gym":         'amenity"="fitness_centre',
+    "pharmacy":    'amenity"="pharmacy',
+    "grocery":     'shop"="supermarket',
+    "coffee":      'amenity"="cafe',
+    "fast_food":   'amenity"="fast_food',
+    "restaurant":  'amenity"="restaurant',
+    "bar":         'amenity"="bar',
+    "hotel":       'tourism"="hotel',
+    "gas_station": 'amenity"="fuel',
+    "clothing":    'shop"="clothes',
+    "bank":        'amenity"="bank',
+    "parking":     'amenity"="parking',
+    "hospital":    'amenity"="hospital',
+    "school":      'amenity"="school',
+    "supermarket": 'shop"="supermarket',
 }
 
 VALID_CATEGORIES = set(CATEGORY_TAGS.keys())
-VALID_BRANDS = {"Target", "Walmart"}
 
 
 def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -69,8 +78,6 @@ async def get_pois(
         raise HTTPException(status_code=400, detail="Provide either 'brand' or 'category', not both.")
     if not brand and not category:
         raise HTTPException(status_code=400, detail="Provide either 'brand' or 'category'.")
-    if brand and brand not in VALID_BRANDS:
-        raise HTTPException(status_code=400, detail=f"Brand must be one of: {', '.join(sorted(VALID_BRANDS))}.")
     if category and category not in VALID_CATEGORIES:
         raise HTTPException(status_code=400, detail=f"Category must be one of: {', '.join(sorted(VALID_CATEGORIES))}.")
 
