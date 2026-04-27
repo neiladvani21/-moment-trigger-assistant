@@ -1,13 +1,31 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
+import GeofenceMap from './GeofenceMap';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
+
+function generateSessionId() {
+  return 'sess_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
 
 function App() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState(() => {
+    return sessionStorage.getItem('session_id') || generateSessionId();
+  });
+
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    sessionStorage.setItem('session_id', sessionId);
+  }, [sessionId]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
 
   const suggestedPrompts = useMemo(
     () => [
@@ -18,11 +36,9 @@ function App() {
     []
   );
 
-  const sendMessage = async () => {
-    const trimmed = input.trim();
-    if (!trimmed || loading) {
-      return;
-    }
+  const sendMessage = useCallback(async (text) => {
+    const trimmed = (text || input).trim();
+    if (!trimmed || loading) return;
 
     const userMessage = { role: 'user', content: trimmed };
     setMessages((prev) => [...prev, userMessage]);
@@ -32,12 +48,16 @@ function App() {
     try {
       const response = await axios.post(`${API_BASE_URL}/chat`, {
         message: trimmed,
+        session_id: sessionId,
       });
 
       const agentMessage = {
         role: 'agent',
         content: response.data?.response || 'No response received.',
         toolsUsed: Array.isArray(response.data?.tools_used) ? response.data.tools_used : [],
+        pois: Array.isArray(response.data?.pois) ? response.data.pois : [],
+        geofenceRadiusM: response.data?.geofence_radius_m || null,
+        mapCenter: response.data?.map_center || null,
       };
 
       setMessages((prev) => [...prev, agentMessage]);
@@ -59,7 +79,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [input, loading, sessionId]);
 
   const onInputKeyDown = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -68,16 +88,38 @@ function App() {
     }
   };
 
+  const startNewChat = async () => {
+    try {
+      await axios.delete(`${API_BASE_URL}/session/${sessionId}`);
+    } catch (_) {
+      // best-effort clear on server
+    }
+    const newId = generateSessionId();
+    setSessionId(newId);
+    setMessages([]);
+    setInput('');
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
       <div className="mx-auto flex h-screen w-full max-w-5xl flex-col px-4 py-4 sm:px-6 sm:py-6">
-        <header className="mb-4 rounded-xl border border-slate-700 bg-slate-800/80 p-4 shadow-lg shadow-slate-950/30 sm:mb-6 sm:p-5">
-          <h1 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
-            Moment Trigger Assistant
-          </h1>
-          <p className="mt-1 text-sm text-slate-300 sm:text-base">
-            Location-Based Marketing Activation Platform
-          </p>
+        <header className="mb-4 flex items-center justify-between rounded-xl border border-slate-700 bg-slate-800/80 p-4 shadow-lg shadow-slate-950/30 sm:mb-6 sm:p-5">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+              Moment Trigger Assistant
+            </h1>
+            <p className="mt-1 text-sm text-slate-300 sm:text-base">
+              Location-Based Marketing Activation Platform
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={startNewChat}
+            disabled={loading}
+            className="rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            New Chat
+          </button>
         </header>
 
         <main className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-700 bg-slate-800/60 shadow-lg shadow-slate-950/30">
@@ -90,7 +132,7 @@ function App() {
                     <button
                       key={prompt}
                       type="button"
-                      onClick={() => setInput(prompt)}
+                      onClick={() => sendMessage(prompt)}
                       className="w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-left text-sm text-slate-200 transition hover:border-slate-500 hover:bg-slate-700"
                       disabled={loading}
                     >
@@ -123,6 +165,14 @@ function App() {
                     <p className="m-0 whitespace-pre-wrap text-sm sm:text-base">{message.content}</p>
                   )}
 
+                  {message.role === 'agent' && message.pois?.length > 0 && (
+                    <GeofenceMap
+                      pois={message.pois}
+                      geofenceRadiusM={message.geofenceRadiusM}
+                      mapCenter={message.mapCenter}
+                    />
+                  )}
+
                   {message.role === 'agent' && message.toolsUsed?.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {message.toolsUsed.map((tool) => (
@@ -147,6 +197,8 @@ function App() {
                 </div>
               </div>
             )}
+
+            <div ref={messagesEndRef} />
           </section>
 
           <section className="border-t border-slate-700 p-4 sm:p-5">
@@ -155,14 +207,14 @@ function App() {
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={onInputKeyDown}
-                placeholder="Type your request..."
+                placeholder="Type your request... (Shift+Enter for new line)"
                 rows={2}
                 disabled={loading}
                 className="min-h-[52px] flex-1 resize-none rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-400 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:opacity-70"
               />
               <button
                 type="button"
-                onClick={sendMessage}
+                onClick={() => sendMessage()}
                 disabled={loading || !input.trim()}
                 className="h-[52px] rounded-lg bg-white px-4 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-400"
               >

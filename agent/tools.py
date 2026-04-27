@@ -88,7 +88,10 @@ def search_pois(
             f"- {p['name']} ({p['type']}): {p['distance_m']}m away at ({p['lat']}, {p['lon']})"
             for p in pois
         ]
-        return f"Found {len(pois)} POI(s):\n" + "\n".join(lines)
+        # Append raw JSON block so main.py can extract structured POI data for the map
+        import json
+        raw_block = f"\n\n__POI_DATA_JSON__:{json.dumps(pois[:50])}"
+        return f"Found {len(pois)} POI(s):\n" + "\n".join(lines) + raw_block
     except httpx.TimeoutException:
         return "POI search unavailable, please try again."
     except Exception as e:
