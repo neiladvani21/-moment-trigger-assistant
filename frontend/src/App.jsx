@@ -63,6 +63,7 @@ function App() {
         pois: Array.isArray(response.data?.pois) ? response.data.pois : [],
         geofenceRadiusM: response.data?.geofence_radius_m || null,
         mapCenter: response.data?.map_center || null,
+        imageUrl: response.data?.image_url || null,
       };
 
       setMessages((prev) => [...prev, agentMessage]);
@@ -176,6 +177,18 @@ function App() {
                       geofenceRadiusM={message.geofenceRadiusM}
                       mapCenter={message.mapCenter}
                     />
+                  )}
+
+                  {message.role === 'agent' && message.imageUrl && (
+                    <div className="mt-4">
+                      <p className="mb-2 text-xs font-medium text-slate-400 uppercase tracking-wide">Generated Campaign Banner</p>
+                      <img
+                        src={message.imageUrl}
+                        alt="Generated marketing banner"
+                        className="w-full rounded-xl border border-slate-200 shadow-sm"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    </div>
                   )}
 
                   {message.role === 'agent' && message.toolsUsed?.length > 0 && (

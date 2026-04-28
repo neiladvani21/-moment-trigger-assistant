@@ -10,7 +10,10 @@ from models.pois import POI
 
 logger = logging.getLogger(__name__)
 
-OVERPASS_FALLBACK_URL = "https://overpass.kumi.systems/api/interpreter"
+OVERPASS_FALLBACK_URLS = [
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+]
 
 CATEGORY_TAGS = {
     "gym":         'amenity"="fitness_centre',
@@ -85,7 +88,7 @@ async def get_pois(
 
     elements: List[dict] = []
     failures: List[str] = []
-    overpass_urls = [OVERPASS_URL, OVERPASS_FALLBACK_URL]
+    overpass_urls = [OVERPASS_URL] + OVERPASS_FALLBACK_URLS
 
     for overpass_url in overpass_urls:
         try:

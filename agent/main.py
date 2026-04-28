@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 import uuid
+from urllib.parse import quote
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
@@ -59,6 +60,7 @@ class ChatResponse(BaseModel):
     pois: List[POIData] = []
     geofence_radius_m: Optional[int] = None
     map_center: Optional[Dict[str, float]] = None
+    image_url: Optional[str] = None
 
 
 def _extract_map_data(intermediate_steps: list) -> tuple[list, Optional[int], Optional[dict]]:
@@ -95,6 +97,36 @@ def _extract_map_data(intermediate_steps: list) -> tuple[list, Optional[int], Op
     return pois, geofence_radius_m, map_center
 
 
+def _build_image_url(response_text: str) -> Optional[str]:
+    """Extract offer copy from agent response and build a Pollinations image URL."""
+    # Match quoted offer copy: "Visit Starbucks today..." or 'Warm up at Hidden Grounds...'
+    match = re.search(r'["“]([A-Z][^"\']{20,200})["”]', response_text)
+
+    if not match:
+        # Match after "offer copy:" label — grab up to end of sentence
+        match = re.search(
+            r"(?:suggested offer copy|offer copy)\s*[:\*]+\s*(.{20,200}?)(?:\n|$)",
+            response_text,
+            re.IGNORECASE,
+        )
+
+    if not match:
+        return None
+
+    offer_copy = match.group(1).strip().strip('"').strip("'")
+
+    # Skip if it looks like a template placeholder
+    if "[" in offer_copy or "Coffee Shop Name" in offer_copy:
+        return None
+    prompt = (
+        f"Professional retail marketing banner, bold typography, vibrant colors. "
+        f"Campaign message: {offer_copy}. "
+        f"Clean modern design, no people, suitable for digital advertising."
+    )
+    encoded = quote(prompt)
+    return f"https://image.pollinations.ai/prompt/{encoded}?width=800&height=400&nologo=true&seed=42"
+
+
 def _run_agent(session_id: str, message: str, local_time: str) -> dict:
     return run_with_history(session_id, message, local_time)
 
@@ -128,6 +160,7 @@ async def chat(request: ChatRequest):
     ))
 
     pois, geofence_radius_m, map_center = _extract_map_data(steps)
+    image_url = _build_image_url(result["output"])
 
     return ChatResponse(
         response=result["output"],
@@ -136,6 +169,7 @@ async def chat(request: ChatRequest):
         pois=[POIData(**p) for p in pois],
         geofence_radius_m=geofence_radius_m,
         map_center=map_center,
+        image_url=image_url,
     )
 
 
