@@ -140,13 +140,37 @@ agent/
     copywriter.md       ← copy rules, 3 variant angles, character limits, tone
     creative.md         ← banner generation instructions, prompt structure
     analyst.md          ← (Phase 5) campaign history, performance pattern reading
-  agents/
-    researcher.py       ← loads researcher.md + binds tools (search_pois, get_weather) + model
-    strategist.py       ← loads strategist.md + binds tools (suggest_geofence) + model
-    copywriter.py       ← loads copywriter.md + no tools (pure reasoning) + model
-    creative.py         ← loads creative.md + binds image generation tool + model
-  graph.py              ← imports all agents, wires them into the execution flow
+  agents.py             ← all agents defined here, each loads its own .md persona
+  graph.py              ← wires agents into the execution flow
   main.py               ← just calls graph.py, no agent logic lives here
+```
+
+No separate `.py` file per agent is needed. All agents are defined in a single `agents.py` file. Each agent loads its persona from the corresponding `.md` file. The intelligence lives in the markdown — the Python just binds it to tools and a model:
+
+```python
+def load_persona(name: str) -> str:
+    return Path(f"personas/{name}.md").read_text()
+
+researcher = LlmAgent(
+    model=worker_model,
+    name="researcher",
+    instruction=load_persona("researcher"),
+    tools=[search_pois, get_weather, geocode_location],
+)
+
+copywriter = LlmAgent(
+    model=reasoning_model,
+    name="copywriter",
+    instruction=load_persona("copywriter"),
+    tools=[],
+)
+
+strategist = LlmAgent(
+    model=worker_model,
+    name="strategist",
+    instruction=load_persona("strategist"),
+    tools=[suggest_geofence],
+)
 ```
 
 Each `.md` persona file will contain:
@@ -157,22 +181,17 @@ Each `.md` persona file will contain:
 - **Output format** — exact structure of what it should return
 - **Rules** — constraints and guardrails (e.g. "copy must be under 160 characters")
 
-The `.py` file for each agent is intentionally thin:
-```python
-persona = Path("personas/researcher.md").read_text()
-researcher = Agent(system_prompt=persona, tools=[search_pois, get_weather], model=groq_8b)
-```
-
 **Files to create:**
-- `agent/personas/orchestrator.md` + `agents/orchestrator.py`
-- `agent/personas/researcher.md` + `agents/researcher.py`
-- `agent/personas/strategist.md` + `agents/strategist.py`
-- `agent/personas/copywriter.md` + `agents/copywriter.py`
-- `agent/personas/creative.md` + `agents/creative.py`
+- `agent/personas/orchestrator.md`
+- `agent/personas/researcher.md`
+- `agent/personas/strategist.md`
+- `agent/personas/copywriter.md`
+- `agent/personas/creative.md`
+- `agent/agents.py` — all agents in one file, each loading its persona
 - `agent/graph.py` — wires all agents into the execution flow
 
 **Effort:** 1-2 weeks  
-**Outcome:** Clean separation of intelligence (markdown) from code (Python). Easy to read, easy to modify, easy to extend. Adding a new capability = write a new `.md` persona.
+**Outcome:** Clean separation of intelligence (markdown) from code (Python). Easy to read, easy to modify, easy to extend. Adding a new agent = write one new `.md` persona + add a few lines to `agents.py`.
 
 ---
 
