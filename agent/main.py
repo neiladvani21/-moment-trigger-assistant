@@ -7,8 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from agent import run_with_history
@@ -98,14 +100,12 @@ def _extract_map_data(intermediate_steps: list) -> tuple[list, Optional[int], Op
 
 
 def _build_image_url(response_text: str) -> Optional[str]:
-    """Extract offer copy from agent response and build a Pollinations image URL."""
-    # Match quoted offer copy: "Visit Starbucks today..." or 'Warm up at Hidden Grounds...'
-    match = re.search(r'["“]([A-Z][^"\']{20,200})["”]', response_text)
+    # Match offer copy in straight or curly quotes, or after “offer copy:” label
+    match = re.search(u'[“””]([A-Z][^“””]{20,200})[“””]', response_text)
 
     if not match:
-        # Match after "offer copy:" label — grab up to end of sentence
         match = re.search(
-            r"(?:suggested offer copy|offer copy)\s*[:\*]+\s*(.{20,200}?)(?:\n|$)",
+            r'(?:suggested offer copy|offer copy)\s*(?:could be)?\s*[:\*]+\s*[““]?(.{20,200}?)[“”!]?(?:\n|$)',
             response_text,
             re.IGNORECASE,
         )
@@ -160,7 +160,10 @@ async def chat(request: ChatRequest):
     ))
 
     pois, geofence_radius_m, map_center = _extract_map_data(steps)
-    image_url = _build_image_url(result["output"])
+
+    image_keywords = ["generate image", "create image", "make image", "generate banner", "create banner", "make banner", "show banner", "show image", "create a banner", "generate a banner"]
+    wants_image = any(kw in request.message.lower() for kw in image_keywords)
+    image_url = _build_image_url(result["output"]) if wants_image else None
 
     return ChatResponse(
         response=result["output"],
@@ -171,6 +174,15 @@ async def chat(request: ChatRequest):
         map_center=map_center,
         image_url=image_url,
     )
+
+
+@app.get("/image-proxy")
+async def image_proxy(url: str):
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(url)
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Image fetch failed")
+    return Response(content=resp.content, media_type=resp.headers.get("content-type", "image/jpeg"))
 
 
 @app.delete("/session/{session_id}")

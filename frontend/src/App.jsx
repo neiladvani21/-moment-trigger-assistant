@@ -63,7 +63,9 @@ function App() {
         pois: Array.isArray(response.data?.pois) ? response.data.pois : [],
         geofenceRadiusM: response.data?.geofence_radius_m || null,
         mapCenter: response.data?.map_center || null,
-        imageUrl: response.data?.image_url || null,
+        imageUrl: response.data?.image_url
+          ? `${API_BASE_URL}/image-proxy?url=${encodeURIComponent(response.data.image_url)}`
+          : null,
       };
 
       setMessages((prev) => [...prev, agentMessage]);
@@ -182,12 +184,20 @@ function App() {
                   {message.role === 'agent' && message.imageUrl && (
                     <div className="mt-4">
                       <p className="mb-2 text-xs font-medium text-slate-400 uppercase tracking-wide">Generated Campaign Banner</p>
-                      <img
-                        src={message.imageUrl}
-                        alt="Generated marketing banner"
-                        className="w-full rounded-xl border border-slate-200 shadow-sm"
-                        onError={(e) => { e.target.style.display = 'none'; }}
-                      />
+                      <div className="relative w-full rounded-xl border border-slate-200 overflow-hidden bg-slate-100" style={{minHeight: '200px'}}>
+                        <p className="absolute inset-0 flex items-center justify-center text-xs text-slate-400">Generating image...</p>
+                        <img
+                          src={message.imageUrl}
+                          alt="Generated marketing banner"
+                          className="relative w-full rounded-xl"
+                          style={{display: 'block'}}
+                          onLoad={(e) => { e.target.previousSibling.style.display = 'none'; }}
+                          onError={(e) => { e.target.previousSibling.textContent = 'Image unavailable. '; e.target.style.display = 'none'; }}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">
+                        <a href={message.imageUrl} target="_blank" rel="noreferrer" className="underline">Open image in new tab</a>
+                      </p>
                     </div>
                   )}
 
