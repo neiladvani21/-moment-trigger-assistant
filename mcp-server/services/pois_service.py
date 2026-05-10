@@ -16,21 +16,21 @@ OVERPASS_FALLBACK_URLS = [
 ]
 
 CATEGORY_TAGS = {
-    "gym":         'amenity"="fitness_centre',
-    "pharmacy":    'amenity"="pharmacy',
-    "grocery":     'shop"="supermarket',
-    "coffee":      'amenity"="cafe',
-    "fast_food":   'amenity"="fast_food',
-    "restaurant":  'amenity"="restaurant',
-    "bar":         'amenity"="bar',
-    "hotel":       'tourism"="hotel',
-    "gas_station": 'amenity"="fuel',
-    "clothing":    'shop"="clothes',
-    "bank":        'amenity"="bank',
-    "parking":     'amenity"="parking',
-    "hospital":    'amenity"="hospital',
-    "school":      'amenity"="school',
-    "supermarket": 'shop"="supermarket',
+    "gym":         ("amenity", "fitness_centre"),
+    "pharmacy":    ("amenity", "pharmacy"),
+    "grocery":     ("shop",    "supermarket"),
+    "coffee":      ("amenity", "cafe"),
+    "fast_food":   ("amenity", "fast_food"),
+    "restaurant":  ("amenity", "restaurant"),
+    "bar":         ("amenity", "bar"),
+    "hotel":       ("tourism", "hotel"),
+    "gas_station": ("amenity", "fuel"),
+    "clothing":    ("shop",    "clothes"),
+    "bank":        ("amenity", "bank"),
+    "parking":     ("amenity", "parking"),
+    "hospital":    ("amenity", "hospital"),
+    "school":      ("amenity", "school"),
+    "supermarket": ("shop",    "supermarket"),
 }
 
 VALID_CATEGORIES = set(CATEGORY_TAGS.keys())
@@ -54,11 +54,9 @@ def _build_overpass_query(
 ) -> str:
     if brand:
         filter_clause = f'["name"="{brand}"]'
-        poi_type = brand
     else:
-        tag_expr = CATEGORY_TAGS[category]
-        filter_clause = f'["{tag_expr}"]'
-        poi_type = category
+        key, val = CATEGORY_TAGS[category]
+        filter_clause = f'["{key}"="{val}"]'
 
     return (
         f"[out:json][timeout:25];\n"

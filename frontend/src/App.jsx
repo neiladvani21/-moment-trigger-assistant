@@ -3,6 +3,80 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import GeofenceMap from './GeofenceMap';
 
+const TOOL_META = {
+  get_weather: { label: 'Weather', color: 'bg-sky-100 text-sky-700', icon: '🌤' },
+  geocode_location: { label: 'Geocode', color: 'bg-violet-100 text-violet-700', icon: '📍' },
+  search_pois: { label: 'POI Search', color: 'bg-emerald-100 text-emerald-700', icon: '🗺' },
+  suggest_geofence: { label: 'Geofence', color: 'bg-amber-100 text-amber-700', icon: '⬡' },
+  generate_image: { label: 'Banner', color: 'bg-pink-100 text-pink-700', icon: '🖼' },
+};
+
+function ToolBadge({ tool }) {
+  const meta = TOOL_META[tool] || { label: tool, color: 'bg-slate-100 text-slate-600', icon: '⚙' };
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${meta.color}`}>
+      <span>{meta.icon}</span>
+      {meta.label}
+    </span>
+  );
+}
+
+function ToolsUsed({ tools }) {
+  const [open, setOpen] = useState(false);
+  if (!tools?.length) return null;
+  return (
+    <div className="mt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition"
+      >
+        <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+        Tools used ({tools.length})
+      </button>
+      {open && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {tools.map((tool) => <ToolBadge key={tool} tool={tool} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const LOADING_HINTS = [
+  'Checking location data…',
+  'Fetching weather conditions…',
+  'Searching nearby POIs…',
+  'Calculating geofence…',
+  'Building your campaign…',
+];
+
+function ThinkingIndicator() {
+  const [hintIdx, setHintIdx] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setHintIdx((i) => (i + 1) % LOADING_HINTS.length), 2000);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div className="flex justify-start">
+      <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+        <span className="flex gap-1">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="h-2 w-2 rounded-full bg-slate-400"
+              style={{ animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }}
+            />
+          ))}
+        </span>
+        <span className="text-slate-500 transition-all">{LOADING_HINTS[hintIdx]}</span>
+      </div>
+    </div>
+  );
+}
+
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
 
 function generateSessionId() {
@@ -201,30 +275,12 @@ function App() {
                     </div>
                   )}
 
-                  {message.role === 'agent' && message.toolsUsed?.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {message.toolsUsed.map((tool) => (
-                        <span
-                          key={tool}
-                          className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
-                        >
-                          {tool}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <ToolsUsed tools={message.toolsUsed} />
                 </div>
               </div>
             ))}
 
-            {loading && (
-              <div className="flex justify-start">
-                <div className="flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-slate-700">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
-                  Agent is thinking...
-                </div>
-              </div>
-            )}
+            {loading && <ThinkingIndicator />}
 
             <div ref={messagesEndRef} />
           </section>
