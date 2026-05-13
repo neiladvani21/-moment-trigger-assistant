@@ -4,6 +4,8 @@ from typing import List, Optional
 from urllib.parse import urlencode
 
 import httpx
+
+from services.cache import get as cache_get, set as cache_set, poi_key, POI_TTL
 from fastapi import HTTPException
 
 from config import OVERPASS_URL, HTTP_TIMEOUT
@@ -80,6 +82,11 @@ async def get_pois(
     if category and category not in VALID_CATEGORIES:
         raise HTTPException(status_code=400, detail=f"Category must be one of: {', '.join(sorted(VALID_CATEGORIES))}.")
 
+    cache_k = poi_key(lat, lon, radius_m, brand, category)
+    cached = cache_get(cache_k)
+    if cached is not None:
+        return cached
+
     query = _build_overpass_query(lat, lon, radius_m, brand, category)
 
     elements: List[dict] = []
@@ -145,4 +152,5 @@ async def get_pois(
         ))
 
     results.sort(key=lambda p: p.distance_m)
+    cache_set(cache_k, results, POI_TTL)
     return results

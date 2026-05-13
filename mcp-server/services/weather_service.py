@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from config import OPEN_METEO_URL, HTTP_TIMEOUT
 from models.weather import WeatherResponse
 from services.geocode_service import geocode_location
+from services.cache import get as cache_get, set as cache_set, weather_key, WEATHER_TTL
 
 WEATHERCODE_TO_CONDITION = {
     0:  "Clear sky",
@@ -34,6 +35,10 @@ WEATHERCODE_TO_CONDITION = {
 
 
 async def get_weather(city: str) -> WeatherResponse:
+    cached = cache_get(weather_key(city))
+    if cached:
+        return cached
+
     geo = await geocode_location(city)
 
     params = {
@@ -65,9 +70,11 @@ async def get_weather(city: str) -> WeatherResponse:
 
     condition = WEATHERCODE_TO_CONDITION.get(weathercode, "Unknown condition")
 
-    return WeatherResponse(
+    result = WeatherResponse(
         city=city,
         temperature=temperature,
         condition=condition,
         humidity=int(humidity),
     )
+    cache_set(weather_key(city), result, WEATHER_TTL)
+    return result

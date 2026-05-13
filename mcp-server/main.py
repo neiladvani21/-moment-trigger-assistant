@@ -1,6 +1,9 @@
+import logging
 from fastapi import FastAPI
 
 from routes import health, weather, geocode, pois, geofence
+
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Location Moment Trigger MCP Server")
 

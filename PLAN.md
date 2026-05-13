@@ -251,6 +251,13 @@ Replace raw markdown with structured visual cards:
 - Click any session to restore the conversation
 - Store session metadata (location, brand, timestamp) in SQLite
 
+### 3.5 Evaluate Code Mode Pattern (If Tool Context Gets Large)
+- By Phase 3 we'll have 8-10 tool calls per request (competitor POIs, foot traffic, demographics, census)
+- If intermediate tool results start bloating the LLM context, consider switching to the **code mode pattern** — LLM writes one JavaScript/Python program, a sandbox runs all tool calls internally, only the final JSON is returned to the LLM
+- This eliminates intermediate result bloat entirely and removes the risk of coordinate/value hallucination across tool calls
+- Only worth doing if context size becomes a real problem — re-evaluate at the start of Phase 3 once the new tools are scoped
+- Reference: same pattern used in the CVE analysis project where MCP results stayed inside a Node.js vm.createContext sandbox and never re-entered LLM context
+
 **Effort:** 2-3 weeks  
 **Outcome:** Looks and feels like a real product, not a chatbot
 

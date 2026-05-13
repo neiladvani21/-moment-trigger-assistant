@@ -10,10 +10,10 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
-from agent import run_with_history
+from agent import run_with_history, stream_with_history
 from config import AGENT_TIMEOUT
 from database import delete_session, init_db
 
@@ -173,6 +173,58 @@ async def chat(request: ChatRequest):
         geofence_radius_m=geofence_radius_m,
         map_center=map_center,
         image_url=image_url,
+    )
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    session_id = request.session_id or str(uuid.uuid4())
+    local_time = request.local_time or "unknown"
+
+    image_keywords = ["generate image", "create image", "make image", "generate banner",
+                      "create banner", "make banner", "show banner", "show image",
+                      "create a banner", "generate a banner"]
+    wants_image = any(kw in request.message.lower() for kw in image_keywords)
+
+    async def event_generator():
+        try:
+            async for chunk in stream_with_history(session_id, request.message, local_time):
+                if chunk["type"] == "token":
+                    yield f"data: {json.dumps(chunk)}\n\n"
+
+                elif chunk["type"] == "done":
+                    pois, geofence_radius_m, map_center = _extract_map_data(chunk["intermediate_steps"])
+                    tools_used = list(dict.fromkeys(
+                        step[0].tool for step in chunk["intermediate_steps"]
+                        if hasattr(step[0], "tool")
+                    ))
+                    image_url = _build_image_url(chunk["output"]) if wants_image else None
+                    if image_url:
+                        image_url = f"http://localhost:8001/image-proxy?url={quote(image_url, safe='')}"
+
+                    done_payload = {
+                        "type": "done",
+                        "session_id": session_id,
+                        "tools_used": tools_used,
+                        "pois": pois,
+                        "geofence_radius_m": geofence_radius_m,
+                        "map_center": map_center,
+                        "image_url": image_url,
+                    }
+                    yield f"data: {json.dumps(done_payload)}\n\n"
+
+        except asyncio.TimeoutError:
+            yield f"data: {json.dumps({'type': 'error', 'content': 'Agent timed out. Please retry.'})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

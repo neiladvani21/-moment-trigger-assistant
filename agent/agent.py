@@ -25,13 +25,14 @@ SYSTEM_PROMPT = (
     "- Evening (6pm–10pm): Focus on after-work wind-down, social meetups, dinner angles\n"
     "- Night (10pm–6am): Focus on late-night study, night shift workers, quiet time angles\n\n"
     "STRICT RULES:\n"
-    "1. Always call get_weather and suggest_geofence on every request\n"
-    "2. Never assume, guess, or hallucinate POI data\n"
-    "3. If search_pois returns 'No ... locations found', tell the user clearly: no venues of that type exist "
+    "1. Always call geocode_location FIRST to get coordinates, then use EXACTLY those lat/lon values for search_pois. Never use coordinates from memory or previous turns.\n"
+    "2. Always call get_weather and suggest_geofence on every request.\n"
+    "3. Never assume, guess, or hallucinate POI data.\n"
+    "4. If search_pois returns 'No ... locations found', tell the user clearly: no venues of that type exist "
     "in that area according to OpenStreetMap, and suggest trying a larger radius or nearby city.\n"
-    "4. If search_pois returns 'unavailable' or an error, tell the user the POI service is temporarily unavailable and suggest retrying.\n"
-    "5. Never generate geofence or offer copy if POI search returned no results or failed.\n"
-    "6. If any tool fails, report honestly and suggest retry\n"
+    "5. If search_pois returns 'unavailable' or an error, tell the user the POI service is temporarily unavailable and suggest retrying.\n"
+    "6. Never generate geofence or offer copy if POI search returned no results or failed.\n"
+    "7. If any tool fails, report honestly and suggest retry.\n"
     "6. When generating suggested offer copy, always mention at least one specific POI name from the search results. "
     "For example, if Whole Foods is in the results, say 'Visit Whole Foods today' instead of 'visit our nearby stores'.\n"
     "7. You have access to conversation history. Use it to understand follow-up questions and references "
@@ -81,3 +82,49 @@ def run_with_history(session_id: str, message: str, local_time: str = "unknown")
     save_messages(session_id, message, result["output"])
 
     return result
+
+
+async def stream_with_history(session_id: str, message: str, local_time: str = "unknown"):
+    """Async generator that yields text tokens then a final metadata dict."""
+    raw_history = load_history(session_id)
+
+    chat_history = []
+    for entry in raw_history:
+        if entry["role"] == "human":
+            chat_history.append(HumanMessage(content=entry["content"]))
+        else:
+            chat_history.append(AIMessage(content=entry["content"]))
+
+    full_output = []
+    intermediate_steps = []
+
+    async for event in executor.astream_events(
+        {"input": message, "chat_history": chat_history, "local_time": local_time},
+        version="v2",
+    ):
+        kind = event["event"]
+
+        # Stream final LLM response tokens
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                full_output.append(chunk.content)
+                yield {"type": "token", "content": chunk.content}
+
+        # Collect intermediate tool steps for map/POI data
+        elif kind == "on_tool_end":
+            tool_name = event.get("name", "")
+            output = event["data"].get("output", "")
+            # Reconstruct a minimal step tuple for _extract_map_data
+            class _FakeAction:
+                def __init__(self, tool): self.tool = tool
+            intermediate_steps.append((_FakeAction(tool_name), output))
+
+    final_output = "".join(full_output)
+    save_messages(session_id, message, final_output)
+
+    yield {
+        "type": "done",
+        "output": final_output,
+        "intermediate_steps": intermediate_steps,
+    }

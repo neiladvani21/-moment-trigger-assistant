@@ -47,7 +47,7 @@ def geocode_location(location: str) -> str:
         if response.status_code != 200:
             return f"Geocoding service error (HTTP {response.status_code}). Please retry."
         data = response.json()
-        return f"Coordinates for '{data['display_name']}': lat={data['lat']}, lon={data['lon']}."
+        return f"Coordinates for '{data['display_name']}': lat={data['lat']}, lon={data['lon']}. USE THESE EXACT VALUES for search_pois."
     except httpx.TimeoutException:
         return "Geocoding service timed out. Please retry."
     except Exception as e:

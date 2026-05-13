@@ -135,50 +135,90 @@ function App() {
     const trimmed = (text || input).trim();
     if (!trimmed || loading) return;
 
-    const userMessage = { role: 'user', content: trimmed };
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => [...prev, { role: 'user', content: trimmed }]);
     setInput('');
     setLoading(true);
+
+    // Placeholder agent message we'll update token by token
+    const placeholderIdx = (prev) => prev.length;
+    setMessages((prev) => [...prev, { role: 'agent', content: '', toolsUsed: [], pois: [], geofenceRadiusM: null, mapCenter: null, imageUrl: null }]);
 
     try {
       const local_time = new Date().toLocaleTimeString('en-US', {
         hour: '2-digit', minute: '2-digit', hour12: true, weekday: 'short'
       });
 
-      const response = await axios.post(`${API_BASE_URL}/chat`, {
-        message: trimmed,
-        session_id: sessionId,
-        local_time,
+      const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: trimmed, session_id: sessionId, local_time }),
       });
 
-      const agentMessage = {
-        role: 'agent',
-        content: response.data?.response || 'No response received.',
-        toolsUsed: Array.isArray(response.data?.tools_used) ? response.data.tools_used : [],
-        pois: Array.isArray(response.data?.pois) ? response.data.pois : [],
-        geofenceRadiusM: response.data?.geofence_radius_m || null,
-        mapCenter: response.data?.map_center || null,
-        imageUrl: response.data?.image_url
-          ? `${API_BASE_URL}/image-proxy?url=${encodeURIComponent(response.data.image_url)}`
-          : null,
-      };
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
 
-      setMessages((prev) => [...prev, agentMessage]);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const chunk = JSON.parse(line.slice(6));
+
+            if (chunk.type === 'token') {
+              setMessages((prev) => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                updated[updated.length - 1] = { ...last, content: last.content + chunk.content };
+                return updated;
+              });
+            } else if (chunk.type === 'done') {
+              setLoading(false);
+              setMessages((prev) => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                updated[updated.length - 1] = {
+                  ...last,
+                  toolsUsed: chunk.tools_used || [],
+                  pois: chunk.pois || [],
+                  geofenceRadiusM: chunk.geofence_radius_m || null,
+                  mapCenter: chunk.map_center || null,
+                  imageUrl: chunk.image_url || null,
+                };
+                return updated;
+              });
+            } else if (chunk.type === 'error') {
+              setLoading(false);
+              setMessages((prev) => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  role: 'agent', content: chunk.content, toolsUsed: [], isError: true,
+                };
+                return updated;
+              });
+            }
+          } catch (_) {}
+        }
+      }
     } catch (error) {
-      const detail =
-        error?.response?.data?.detail ||
-        error?.message ||
-        'Something went wrong while contacting the assistant.';
-
-      setMessages((prev) => [
-        ...prev,
-        {
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
           role: 'agent',
-          content: `Unable to process your request right now.\n\n${detail}`,
+          content: `Unable to process your request right now.\n\n${error.message}`,
           toolsUsed: [],
           isError: true,
-        },
-      ]);
+        };
+        return updated;
+      });
     } finally {
       setLoading(false);
     }

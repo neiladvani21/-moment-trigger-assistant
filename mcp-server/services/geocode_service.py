@@ -3,9 +3,13 @@ from fastapi import HTTPException
 
 from config import NOMINATIM_URL, NOMINATIM_USER_AGENT, HTTP_TIMEOUT
 from models.geocode import GeocodeResponse
+from services.cache import get as cache_get, set as cache_set, geocode_key, GEOCODE_TTL
 
 
 async def geocode_location(location: str) -> GeocodeResponse:
+    cached = cache_get(geocode_key(location))
+    if cached:
+        return cached
     params = {
         "q": location,
         "format": "json",
@@ -29,8 +33,10 @@ async def geocode_location(location: str) -> GeocodeResponse:
         raise HTTPException(status_code=404, detail=f"Location '{location}' not found.")
 
     result = data[0]
-    return GeocodeResponse(
+    response = GeocodeResponse(
         lat=float(result["lat"]),
         lon=float(result["lon"]),
         display_name=result["display_name"],
     )
+    cache_set(geocode_key(location), response, GEOCODE_TTL)
+    return response

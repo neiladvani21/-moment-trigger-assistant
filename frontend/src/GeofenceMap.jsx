@@ -11,9 +11,15 @@ function RecenterMap({ center }) {
 }
 
 export default function GeofenceMap({ pois, geofenceRadiusM, mapCenter }) {
-  if (!mapCenter || pois.length === 0) return null;
+  if (pois.length === 0) return null;
 
-  const center = [mapCenter.lat, mapCenter.lon];
+  // Use centroid of POIs so the map always centers on actual results
+  const avgLat = pois.reduce((s, p) => s + p.lat, 0) / pois.length;
+  const avgLon = pois.reduce((s, p) => s + p.lon, 0) / pois.length;
+  const center = [avgLat, avgLon];
+
+  // Geofence circle still drawn around the geocoded search origin if available
+  const geofenceCenter = mapCenter ? [mapCenter.lat, mapCenter.lon] : center;
 
   return (
     <div className="mt-4 overflow-hidden rounded-xl border border-slate-200" style={{ height: '320px' }}>
@@ -28,12 +34,12 @@ export default function GeofenceMap({ pois, geofenceRadiusM, mapCenter }) {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        <RecenterMap center={mapCenter} />
+        <RecenterMap center={{ lat: avgLat, lon: avgLon }} />
 
         {/* Geofence circle */}
         {geofenceRadiusM && (
           <Circle
-            center={center}
+            center={geofenceCenter}
             radius={geofenceRadiusM}
             pathOptions={{ color: '#6366f1', fillColor: '#6366f1', fillOpacity: 0.08, weight: 2 }}
           />
