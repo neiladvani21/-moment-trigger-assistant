@@ -360,6 +360,80 @@ response = client.models.generate_image(
 3. **Phase 3** — Structured output + new tools — makes it genuinely useful for marketing teams
 4. **Phase 4** — Image upgrade + cost optimization — production-ready cost profile
 5. **Phase 5** — Analytics + history — full SaaS feature set
+6. **Phase 6** — Multi-agent performance & optimization — profile and fix latency after Phase 2 is stable
+7. **Phase 7** — Infrastructure & deployment — do this last, once everything is built
+
+---
+
+## Phase 6 — Multi-Agent Performance & Optimization
+
+**Goal:** After Phase 2 is running, measure real latency and cut it where it actually hurts. Don't optimize blindly — profile first, then fix the bottlenecks.
+
+**Decision: Do this after Phase 2 is stable and tested in practice.**
+
+### 6.1 Latency Profiling First
+- Add timing logs per agent and per tool call
+- Identify where time is actually spent before touching anything
+- Likely culprits: orchestrator model decision time, sequential agent calls that could be parallel, redundant tool calls across agents
+
+### 6.2 Tool Result Caching (Highest ROI)
+- **Geocoding** — same city name always returns same coordinates, cache indefinitely per session
+- **Weather** — cache per location for 10 minutes (weather doesn't change faster than that)
+- **POIs** — cache per (lat, lon, radius, category) for 30 minutes
+- Simple in-memory dict with TTL — no Redis needed at this stage
+- Expected impact: eliminates redundant Overpass and weather API calls on follow-up messages
+
+### 6.3 Clean Inter-Agent Handoffs (Same Concept as Sandbox Pre-processing)
+- When Research Agent finishes, it passes a clean summary to the next agent — not the raw tool output
+- e.g. "5 gyms found, closest is SoulCycle at 51m, weather 22°C clear" — not 138 raw POI records
+- This is the same idea as Anthropic's sandbox technique (running a processing step between tool result and LLM to trim what the LLM sees) — just applied at the inter-agent boundary instead of a separate execution environment
+- Already partially done: `pois[:20]` in tools.py and distance sorting in pois_service.py
+
+### 6.4 Parallel Agent Execution
+- In the multi-agent graph, Research Agent and Strategy Agent can potentially run in parallel
+- LangGraph supports parallel branches — evaluate if research and strategy can overlap
+- Only worth doing if profiling (6.1) shows sequential agents are the bottleneck
+
+### 6.5 What's Probably Not Worth It
+- **Prompt caching** — only valuable at high request volume (thousands/day). Not needed until Phase 6 infra scale
+- **Conversation history compression** — most sessions are 2-3 turns, not long enough to matter
+- **Model distillation / fine-tuning** — overkill for this use case
+
+**Effort:** 1 week (after profiling)
+**Outcome:** Multi-agent response time back to single-agent levels, lower Groq token spend
+
+---
+
+## Phase 7 — Infrastructure & Production Deployment
+
+**Goal:** Move from a local dev setup to a production-ready deployment once all features are built.
+
+**Decision: Do this last — after Phase 5 is complete.**
+
+### 6.1 Database — SQLite → PostgreSQL
+- SQLite breaks under multiple server instances (each has its own file, sessions don't share)
+- Switch to **PostgreSQL** — same SQL queries, minimal code change (~10 lines)
+- Managed options: **Supabase** (free tier, good DX) or **Neon** (serverless Postgres)
+- Use Redis for session/chat history if performance becomes a concern
+
+### 6.2 Deployment Architecture
+| Layer | Service | Why |
+|---|---|---|
+| Frontend (React) | **Vercel** | Best-in-class for React — global CDN, instant deploys, preview URLs on every PR |
+| Agent backend (FastAPI) | **Railway** or **Render** | Supports long-running processes — Vercel serverless would time out on 15-30s agent calls |
+| MCP server (FastAPI) | Same as agent backend | Co-deploy on Railway/Render |
+| Database | **Supabase** or **Neon** | Managed Postgres, free tier, replaces SQLite |
+
+### 6.3 Why Not Vercel for the Backend
+Vercel runs serverless functions with a 10-second timeout on the free tier. Our agent takes 15-30 seconds. Every request would time out. Vercel is frontend-only for this project.
+
+### 6.4 Scaling Considerations
+- Multiple backend instances need shared DB (Postgres) and shared session store (Redis)
+- Add a queue (e.g. Celery + Redis) if agent jobs become heavy enough to block the API
+- Rate limiting per user session to protect Groq/Overpass quotas
+
+**Effort:** 1 week  
+**Outcome:** Publicly accessible, scalable, production-ready deployment
 
 ---
 
